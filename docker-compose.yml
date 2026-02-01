@@ -1,0 +1,14 @@
+services:
+  ocr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kennedycore/ocr:local
+    ports:
+      - "8000:8000"
+    environment:
+      UVICORN_WORKERS: "1"
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "true"
+    volumes:
+      - ./data/uploads:/app/data/uploads
+    restart: unless-stopped
