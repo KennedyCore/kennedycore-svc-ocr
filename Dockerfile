@@ -39,6 +39,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY app ./app
 COPY tests ./tests
 
+# Needed so pytest can import "app" inside Docker build
 ENV PYTHONPATH=/build
 
 # ---- RUN TESTS (CI GATE) ----
@@ -52,7 +53,9 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
-    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=true
+    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=true \
+    PADDLEOCR_HOME=/app/data/.paddleocr \
+    HOME=/app
 
 WORKDIR /app
 
@@ -73,7 +76,11 @@ COPY --from=builder /opt/venv /opt/venv
 COPY app ./app
 COPY README.md ./README.md
 
-RUN mkdir -p /app/data/uploads && chown -R app:app /app
+# Writable directories for uploads and PaddleOCR models
+RUN mkdir -p /app/data/uploads \
+    && mkdir -p /app/data/.paddleocr \
+    && chown -R app:app /app
+
 USER app
 
 EXPOSE 8000
