@@ -39,6 +39,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY app ./app
 COPY tests ./tests
 
+ENV PYTHONPATH=/build
+
 # ---- RUN TESTS (CI GATE) ----
 RUN pytest -q
 
