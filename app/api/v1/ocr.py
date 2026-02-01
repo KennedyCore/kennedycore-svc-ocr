@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from typing import Dict, Optional
-from pydantic import BaseModel, Field
+
 from fastapi import APIRouter, File, UploadFile, Query, Request
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.errors import AppException, ErrorCodes
@@ -53,7 +55,13 @@ async def ocr_upload(
         )
 
     engine = request.app.state.ocr_engine
-    out = engine.extract_from_bytes(data, preprocess=preprocess, return_blocks=blocks)
+
+    out = await run_in_threadpool(
+        engine.extract_from_bytes,
+        data,
+        preprocess=preprocess,
+        return_blocks=blocks,
+    )
 
     return {"ok": True, "traceId": get_trace_id(), "data": out}
 
@@ -68,8 +76,13 @@ async def ocr_from_url(
     # 1) descargar imagen (con agente/headers + streaming + límite)
     img_bytes = await fetch_image_bytes(payload.image_url, extra_headers=payload.headers)
 
-    # 2) OCR
+    # 2) OCR (CPU-bound) en threadpool
     engine = request.app.state.ocr_engine
-    out = engine.extract_from_bytes(img_bytes, preprocess=preprocess, return_blocks=blocks)
+    out = await run_in_threadpool(
+        engine.extract_from_bytes,
+        img_bytes,
+        preprocess=preprocess,
+        return_blocks=blocks,
+    )
 
     return {"ok": True, "traceId": get_trace_id(), "data": out}

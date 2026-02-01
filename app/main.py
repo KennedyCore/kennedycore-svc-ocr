@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
@@ -16,7 +17,14 @@ from app.services.ocr_engine import PaddleOcrEngine
 PROBLEM_JSON = "application/problem+json"
 
 
-def problem_response(request: Request, status: int, code: str, title: str, detail: str, errors=None):
+def problem_response(
+    request: Request,
+    status: int,
+    code: str,
+    title: str,
+    detail: str,
+    errors=None,
+):
     trace_id = get_trace_id()
     body = {
         "type": f"{settings.problem_base_url}/{code.lower()}",
@@ -29,7 +37,11 @@ def problem_response(request: Request, status: int, code: str, title: str, detai
         "code": code,
         "errors": errors or [],
     }
-    return JSONResponse(status_code=status, content=body, media_type=PROBLEM_JSON)
+    return JSONResponse(
+        status_code=status,
+        content=body,
+        media_type=PROBLEM_JSON,
+    )
 
 
 class TraceIdMiddleware(BaseHTTPMiddleware):
@@ -43,7 +55,11 @@ class TraceIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
-app = FastAPI(title=settings.app_name, version=settings.app_version)
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+)
+
 app.add_middleware(TraceIdMiddleware)
 app.include_router(v1_router)
 
@@ -53,9 +69,24 @@ def startup():
     app.state.ocr_engine = PaddleOcrEngine()
     app.state.ready = True
 
+
+# --------
+# Routes
+# --------
+
+@app.get("/", include_in_schema=False)
+def root():
+    # Redirige al Swagger UI
+    return RedirectResponse(url="/docs")
+
+
 @app.get("/ping")
 def ping():
-    return {"ok": True, "service": settings.app_name, "traceId": get_trace_id()}
+    return {
+        "ok": True,
+        "service": settings.app_name,
+        "traceId": get_trace_id(),
+    }
 
 
 @app.get("/info")
@@ -69,20 +100,39 @@ def info():
 
 @app.get("/health")
 def health():
-    return {"ok": True, "ready": bool(getattr(app.state, "ready", False)), "traceId": get_trace_id()}
+    return {
+        "ok": True,
+        "ready": bool(getattr(app.state, "ready", False)),
+        "traceId": get_trace_id(),
+    }
 
+
+# ------------------
+# Exception handlers
+# ------------------
 
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
-    return problem_response(request, exc.status, exc.code, exc.title, exc.detail)
+    return problem_response(
+        request,
+        exc.status,
+        exc.code,
+        exc.title,
+        exc.detail,
+    )
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = []
     for e in exc.errors():
-        loc = ".".join([str(x) for x in e.get("loc", [])])
-        errors.append({"field": loc, "message": e.get("msg", "Invalid value")})
+        loc = ".".join(str(x) for x in e.get("loc", []))
+        errors.append(
+            {
+                "field": loc,
+                "message": e.get("msg", "Invalid value"),
+            }
+        )
 
     return problem_response(
         request,
