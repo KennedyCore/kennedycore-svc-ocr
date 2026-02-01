@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7
 #
 # KennedyCore OCR Service - Dockerfile (prod-ready)
-# - Multi-stage build (small runtime image)
+# - Multi-stage build
 # - Non-root user
-# - Deterministic dependencies via requirements.txt
+# - CI-enforced deploy (tests must pass)
 #
 
 # --------------------------
@@ -36,6 +36,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install -U pip setuptools wheel && \
     python -m pip install -r requirements.txt
 
+COPY app ./app
+COPY tests ./tests
+
+# ---- RUN TESTS (CI GATE) ----
+RUN pytest -q
+
 # --------------------------
 # Runtime stage
 # --------------------------
@@ -61,21 +67,18 @@ RUN addgroup --system app && adduser --system --ingroup app app
 # Copy venv from builder
 COPY --from=builder /opt/venv /opt/venv
 
-# Copy app
+# Copy app only (NO tests in runtime image)
 COPY app ./app
 COPY README.md ./README.md
 
-# Uploads dir
 RUN mkdir -p /app/data/uploads && chown -R app:app /app
-
 USER app
 
 EXPOSE 8000
 
-# Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()" || exit 1
 
 ENV UVICORN_WORKERS=1
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${UVICORN_WORKERS}"]
